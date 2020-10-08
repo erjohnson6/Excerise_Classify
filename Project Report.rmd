@@ -2,7 +2,9 @@
 title: "Exercise Classification Study"
 author: "Eric Johnson"
 date: "10/6/2020"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -17,8 +19,8 @@ library(lubridate)
 
 This analysis focuses on the quality of different exercises performed. Several different
 models were tested in order to determine the best fit from the predictors. The best 
-resulting model was a linear discriminant analysis model which yielded a predicted out of 
-sample error of less than 0.051%
+resulting model was a random forest model which yielded a predicted out of sample error 
+of approximately 0.10%
 
 
 ### Getting and Cleaning Data
@@ -42,6 +44,9 @@ sparse <- function(x) { sum(is.na(x)) }
 percent.na <- round(apply(all.data, 2, sparse)/dim(all.data)[1],2)
 include.col <- percent.na < 0.1
 all.data <- all.data[ , include.col]
+## Eliminating irrelevant columns such as time and user which should not be predictive
+## in real-world settings
+all.data <- all.data[ , 7:60]
 
 ```
 
@@ -69,13 +74,13 @@ verify.data <- all.data[-split.index, ]
 We'll start the analysis by looking at the training a few different models and seeing how
 well they aling to their own training data.
 
-```{r Prelim.Train, warning = FALSE, cache = TRUE}
+```{r Prelim.Train, warning = FALSE}
 rf.model.small <- train(classe ~ ., method = "rf", data = train.data.small, 
                         trControl = trainControl(method="cv"), number = 3)
 rpart.model.small <- train(classe ~ ., method = "rpart", data = train.data.small)
 lda.model.small <- train(classe ~ ., method = "lda", data = train.data.small)
 nb.model.small <- train(classe ~ ., method = "nb", data = train.data.small)
-gbm.model.small <- train(classe ~ ., method = "gbm", data = train.data.small, verbose = FALSE)
+# gbm.model.small <- train(classe ~ ., method = "gbm", data = train.data.small, verbose = FALSE)
 ```
 
 Next let's look at how well the models based on the small datasets predict the remainder
@@ -85,19 +90,24 @@ of the training dataset.
 OOS.Accuracy <- NULL
 rf.pred <- predict(rf.model.small, train.data[-split.index.small, ])
 OOS.Accuracy$rf <- mean(rf.pred == train.data[-split.index.small,"classe"])
+
 rpart.pred <- predict(rpart.model.small, train.data[-split.index.small, ])
 OOS.Accuracy$rpart <- mean(rpart.pred == train.data[-split.index.small,"classe"])
+
 lda.pred <- predict(lda.model.small, train.data[-split.index.small, ])
 OOS.Accuracy$lda <- mean(lda.pred == train.data[-split.index.small,"classe"])
+
 nb.pred <- predict(nb.model.small, train.data[-split.index.small, ])
 OOS.Accuracy$nb <- mean(nb.pred == train.data[-split.index.small,"classe"])
-gbm.pred <- predict(gbm.model.small, train.data[-split.index.small, ])
-OOS.Accuracy$gbm <- mean(gbm.pred == train.data[-split.index.small,"classe"])
+
+# gbm.pred <- predict(gbm.model.small, train.data[-split.index.small, ])
+# OOS.Accuracy$gbm <- mean(gbm.pred == train.data[-split.index.small,"classe"])
+
 print(OOS.Accuracy)
 ```
 
-Based on these results the LDA model has the most accurate predictions. As a result we 
-will move forward with the linear discriminant model.
+Based on these results the random forest model has the most accurate predictions. As a result we 
+will move forward with the random forest model.
 
 ### Full Model Creation
 
@@ -105,13 +115,14 @@ The full model will be created in the same manner as the preliminary models.
 
 ``` {r Full.Model, warning = FALSE}
 OOS.Accuracy.Full <- NULL
-lda.model <- train(classe ~ ., method = "lda", data = train.data)
-lda.pred.full <- predict(lda.model.small, verify.data[])
-OOS.Accuracy.Full$lda <- mean(lda.pred.full == verify.data$classe)
+rf.model <- train(classe ~ ., method = "rf", data = train.data,
+                              trControl = trainControl(method="cv"), number = 3)
+rf.pred.full <- predict(rf.model, verify.data)
+OOS.Accuracy.Full$rf <- mean(rf.pred.full == verify.data$classe)
 print(OOS.Accuracy.Full)
 
 ```
 
-Based on this the predicted out of sample error rate is: `r round(100*(1-OOS.Accuracy.Full$lda),3)`%.
+Based on this the predicted out of sample error rate is: `r round(100*(1-OOS.Accuracy.Full$rf),3)`%.
 Considering the size of the data set this appears to be a fairly accurate model.
 
