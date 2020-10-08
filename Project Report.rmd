@@ -1,0 +1,117 @@
+---
+title: "Exercise Classification Study"
+author: "Eric Johnson"
+date: "10/6/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(lubridate)
+```
+
+## Exercise Classification Study
+
+This analysis focuses on the quality of different exercises performed. Several different
+models were tested in order to determine the best fit from the predictors. The best 
+resulting model was a linear discriminant analysis model which yielded a predicted out of 
+sample error of less than 0.051%
+
+
+### Getting and Cleaning Data
+
+The first step is to get the data loaded in and to appropriately classify it.
+
+```{r Load.Data}
+all.data <- read.csv("./pml-training.csv", na.strings = c("NA", "#DIV/0!"))
+## set Class type for all.data
+all.data$user_name <- as.factor(all.data$user_name)
+all.data$cvtd_timestamp <- dmy_hm(all.data$cvtd_timestamp)
+all.data$new_window <- as.factor(all.data$new_window)
+all.data$classe <- as.factor(all.data$classe)
+```
+
+Unfortunately many of the data variables have very little data in them. In order to prevent
+this from skewing our model we will exclude the variables that have less than 10% data.
+
+``` {r Elim.Sparse.Data}
+sparse <- function(x) { sum(is.na(x)) }
+percent.na <- round(apply(all.data, 2, sparse)/dim(all.data)[1],2)
+include.col <- percent.na < 0.1
+all.data <- all.data[ , include.col]
+
+```
+
+Finally we'll split the data into a few different data sets:
+* train.data - This will contain 80% of the total data set for the final model training
+* train.data.small - This will contain 1/8th of the training data (10% of the full data),
+in order to do some preliminary analysis.
+* verify.data - This will contain the 20% of the data not in the training dataset in order 
+to calculate the predicted out of sample error rate.
+
+``` {r Split.Dataset}
+set.seed(8178)
+
+split.index <- createDataPartition(y = all.data$classe, p = 0.8, list = FALSE)
+train.data <- all.data[split.index, ]
+split.index.small <- createDataPartition(y = train.data$classe, p = 1/8, list = FALSE)
+train.data.small <- train.data[split.index.small, ]
+
+verify.data <- all.data[-split.index, ]
+
+```
+
+### Preliminary Model Analysis
+
+We'll start the analysis by looking at the training a few different models and seeing how
+well they aling to their own training data.
+
+```{r Prelim.Train, warning = FALSE, cache = TRUE}
+rf.model.small <- train(classe ~ ., method = "rf", data = train.data.small, 
+                        trControl = trainControl(method="cv"), number = 3)
+rpart.model.small <- train(classe ~ ., method = "rpart", data = train.data.small)
+lda.model.small <- train(classe ~ ., method = "lda", data = train.data.small)
+nb.model.small <- train(classe ~ ., method = "nb", data = train.data.small)
+gbm.model.small <- train(classe ~ ., method = "gbm", data = train.data.small, verbose = FALSE)
+```
+
+Next let's look at how well the models based on the small datasets predict the remainder
+of the training dataset.
+
+``` {r Prelime.OOSError, warning = FALSE}
+OOS.Accuracy <- NULL
+rf.pred <- predict(rf.model.small, train.data[-split.index.small, ])
+OOS.Accuracy$rf <- mean(rf.pred == train.data[-split.index.small,"classe"])
+rpart.pred <- predict(rpart.model.small, train.data[-split.index.small, ])
+OOS.Accuracy$rpart <- mean(rpart.pred == train.data[-split.index.small,"classe"])
+lda.pred <- predict(lda.model.small, train.data[-split.index.small, ])
+OOS.Accuracy$lda <- mean(lda.pred == train.data[-split.index.small,"classe"])
+nb.pred <- predict(nb.model.small, train.data[-split.index.small, ])
+OOS.Accuracy$nb <- mean(nb.pred == train.data[-split.index.small,"classe"])
+gbm.pred <- predict(gbm.model.small, train.data[-split.index.small, ])
+OOS.Accuracy$gbm <- mean(gbm.pred == train.data[-split.index.small,"classe"])
+print(OOS.Accuracy)
+```
+
+Based on these results the LDA model has the most accurate predictions. As a result we 
+will move forward with the linear discriminant model.
+
+### Full Model Creation
+
+The full model will be created in the same manner as the preliminary models.
+
+``` {r Full.Model, warning = FALSE}
+OOS.Accuracy.Full <- NULL
+lda.model <- train(classe ~ ., method = "lda", data = train.data)
+lda.pred.full <- predict(lda.model.small, verify.data[])
+OOS.Accuracy.Full$lda <- mean(lda.pred.full == verify.data$classe)
+print(OOS.Accuracy.Full)
+
+```
+
+Based on this the predicted out of sample error rate is: `r round(100*(1-OOS.Accuracy.Full$lda),3)`%.
+Considering the size of the data set this appears to be a fairly accurate model.
+
