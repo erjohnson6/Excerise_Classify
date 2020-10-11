@@ -1,6 +1,6 @@
 ---
 title: "Exercise Classification Study"
-author: "Eric Johnson"
+author: "Eric D. Johnson"
 date: "10/6/2020"
 output:
   pdf_document: default
